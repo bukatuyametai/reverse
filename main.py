@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 from enum import Enum
-
+import random
 
 # 1. 石の状態を定義（マジックナンバーを防ぐ）
 class Color(Enum):
@@ -28,6 +28,14 @@ class Board:
 
     def get_piece(self, x: int, y: int) -> Optional[Stone]:
         return self.surface[y][x]
+    
+    def how_many_color(self, color: Color) -> int:
+        count = 0
+        for row in self.surface:
+            for cell in row:
+                if cell is not None and cell.color == color:
+                    count += 1
+        return count
 
 
 class Othello:
@@ -119,14 +127,61 @@ class Othello:
         positions = []
         for x in range(8):
             for y in range(8):
-                if self.find_replace_stone(x, y, attacker_color):
+                if self.can_place(x,y,attacker_color):
                     positions.append((x, y))
         return positions
+    
+    def winner(self) -> Color | None:
+        white = self.board.how_many_color(Color.WHITE)
+        black = self.board.how_many_color(Color.BLACK)
+
+        if white > black:
+            return Color.WHITE
+        elif black > white:
+            return Color.BLACK
+        else:
+            return None
 
 
 if __name__ == "__main__":
     game = Othello()
     print("--- 初期状態 ---")
     game.display()
-    print("--- 黒のおける場所 ---")
-    print(game.can_place_position(Color.BLACK))
+    
+    turn = 0
+    pass_counter = 0
+    
+    while True:
+        if pass_counter == 2:
+            print("両者パスのため試合終了")
+            break
+        
+        # ターンの色を決定
+        current_color = Color.BLACK if turn % 2 == 0 else Color.WHITE
+        color_name = "黒" if current_color == Color.BLACK else "白"
+        print(f"\n--- {turn+1}手目: {color_name}のターン ---")
+
+        # 置ける場所をリストアップ
+        positions = game.can_place_position(current_color)
+        
+        if not positions:
+            print(f"{color_name}は置ける場所がないのでパスします。")
+            pass_counter += 1
+        else:
+            print(f"置ける場所: {positions}")
+            # ランダムに一箇所選んで置く
+            pos = random.choice(positions)
+            game.place_stone(pos[0], pos[1], current_color)
+            print(f"({pos[0]}, {pos[1]}) に置きました！")
+            game.display()
+            pass_counter = 0 # 置けたらパスのカウントをリセット
+            
+        turn += 1
+    
+    winner = game.winner()
+    if winner == Color.WHITE:
+        print("白の勝ち")
+    elif winner == Color.BLACK:
+        print("黒の勝ち")
+    else:
+        print("引き分け")
