@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from enum import Enum
 
+
 # 1. 石の状態を定義（マジックナンバーを防ぐ）
 class Color(Enum):
     WHITE = "●"
@@ -39,46 +40,28 @@ class Board:
 
 class Othello:
     def __init__(self) -> None:
-        # 合成：OthelloはBoardを「持っている」
-        self.board = Board()
+        # Stoneオブジェクトを介さず、Colorを直接格納してオーバーヘッドを削減
+        self.surface = [[Color.EMPTY for _ in range(8)] for _ in range(8)]
         self._setup_initial_pieces()
 
     def _setup_initial_pieces(self):
-        # 初期配置
-        self.board.set_piece(3, 3, Color.WHITE)
-        self.board.set_piece(4, 4, Color.WHITE)
-        self.board.set_piece(3, 4, Color.BLACK)
-        self.board.set_piece(4, 3, Color.BLACK)
+        self.surface[3][3] = Color.WHITE
+        self.surface[4][4] = Color.WHITE
+        self.surface[3][4] = Color.BLACK
+        self.surface[4][3] = Color.BLACK
 
     def display(self) -> None:
-        """盤面を綺麗に表示する"""
         print("  0 1 2 3 4 5 6 7")
-        for y, row in enumerate(self.board.surface):
-            line = f"{y} "
-            for stone in row:
-                if stone:
-                    line += f"{stone.color.value} "
-                else:
-                    line += f"{Color.EMPTY.value} "
-            print(line)
+        for y, row in enumerate(self.surface):
+            print(f"{y} " + " ".join(c.value for c in row))
 
-    def can_place(self, x: int, y: int, attacker_color: Color) -> bool:
-        # 1. 盤面の外なら置けない
-        if not (0 <= x < 8 and 0 <= y < 8):
-            return False
+    def find_replace_stone(self, x: int, y: int, attacker_color: Color) -> list:
+        # 毎回判定用の色を計算せず、事前定義
+        opp = Color.BLACK if attacker_color == Color.WHITE else Color.WHITE
+        stones_to_flip = []
 
-        # 2. すでに石がある場所には置けない
-        if self.board.get_piece(x, y) is not None:
-            return False
-
-        # 3. 相手の石を1つ以上ひっくり返せるか
-        # find_replace_stoneの結果が空でなければ置ける
-        flip_stones = self.find_replace_stone(x, y, attacker_color)
-        return len(flip_stones) > 0
-
-    def find_replace_stone(self, x: int, y: int, attacker_color: Color) -> list[tuple]:
-        # 8方向のベクトル (dx, dy)
-        directions = [
+        # 8方向をタプルで定義（定数化するとより速い）
+        for dx, dy in [
             (0, 1),
             (0, -1),
             (1, 0),
@@ -87,56 +70,55 @@ class Othello:
             (1, -1),
             (-1, 1),
             (-1, -1),
-        ]
-
-        opponent_color = Color.WHITE if attacker_color == Color.BLACK else Color.BLACK
-        stones_to_flip = []
-
-        for dx, dy in directions:
-            temp_stones = []
+        ]:
+            temp = []
             nx, ny = x + dx, y + dy
 
-            # 1. 盤面内かつ相手の石が続く限り進む
-            while 0 <= nx < 8 and 0 <= ny < 8:
-                target = self.board.get_piece(nx, ny)
-                if target is None:  # 空マスならこの方向は失敗
-                    break
-                if target.color == attacker_color:  # 自分の石を見つけたら確定
-                    stones_to_flip.extend(temp_stones)
-                    break
-                if target.color == opponent_color:  # 相手の石なら一時保存して次へ
-                    temp_stones.append((nx, ny))
-
+            # 境界チェックと相手の色の確認を1行で行う
+            while 0 <= nx < 8 and 0 <= ny < 8 and self.surface[ny][nx] == opp:
+                temp.append((nx, ny))
                 nx += dx
                 ny += dy
+
+            # 最後に自分の色があれば、tempにある石はすべてひっくり返せる
+            if (
+                temp
+                and 0 <= nx < 8
+                and 0 <= ny < 8
+                and self.surface[ny][nx] == attacker_color
+            ):
+                stones_to_flip.extend(temp)
 
         return stones_to_flip
 
     def place_stone(self, x: int, y: int, attacker_color: Color) -> bool:
-        if not self.can_place(x, y, attacker_color):
+        # can_placeを呼び出さず、直接flip判定を行うことで二重計算を防ぐ
+        flip_stones = self.find_replace_stone(x, y, attacker_color)
+        if not flip_stones:
             return False
 
-        flip_stones = self.find_replace_stone(x, y, attacker_color)
-        self.board.set_piece(x, y, attacker_color)
-        for x, y in flip_stones:
-            self.board.set_piece(x, y, attacker_color)
+        self.surface[y][x] = attacker_color
+        for fx, fy in flip_stones:
+            self.surface[fy][fx] = attacker_color
         return True
 
-    def can_place_position(self, attacker_color: Color) -> list[tuple]:
-        positions = []
-        for x in range(8):
-            for y in range(8):
-                if self.can_place(x, y, attacker_color):
-                    positions.append((x, y))
-        return positions
+    def can_place_position(self, attacker_color: Color) -> list:
+        # 空いているマスだけを対象にチェック
+        return [
+            (x, y)
+            for y in range(8)
+            for x in range(8)
+            if self.surface[y][x] == Color.EMPTY
+            and self.find_replace_stone(x, y, attacker_color)
+        ]
 
     def winner(self) -> Optional[Color]:
-        white = self.board.how_many_color(Color.WHITE)
-        black = self.board.how_many_color(Color.BLACK)
-
+        # countメソッドを使用して高速に集計
+        flat_board = [cell for row in self.surface for cell in row]
+        white = flat_board.count(Color.WHITE)
+        black = flat_board.count(Color.BLACK)
         if white > black:
             return Color.WHITE
-        elif black > white:
+        if black > white:
             return Color.BLACK
-        else:
-            return None
+        return None
