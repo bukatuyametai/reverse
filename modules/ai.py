@@ -59,7 +59,7 @@ class YosumiAI(AI):
         return random.choice(positions)
 
 class MonteCarloAI(AI):
-    SIMULATIONS_PER_MOVE = 100
+    SIMULATIONS_PER_MOVE = 200
 
     def place(self) -> Optional[Tuple[int, int]]:
         positions = self.legal_moves()
