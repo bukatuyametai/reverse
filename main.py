@@ -1,19 +1,19 @@
 import time
-from game import Game
-from ai import RandomAI, YosumiAI
+from modules.game import Game
+from modules.ai import RandomAI, MonteCarloAI
 from othello_rust import Color
 
 # --- メイン処理 ---
 
 if __name__ == "__main__":
     # Rust実装なので10,000回でも高速に終わります
-    num_games = 10000
+    num_games = 10
     results = {"BLACK": 0, "WHITE": 0, "DRAW": 0}
 
     start_time = time.time()
 
     for i in range(num_games):
-        game_manager = Game(RandomAI, YosumiAI)
+        game_manager = Game(RandomAI, MonteCarloAI)
         winner = game_manager.play()
 
         if winner == Color.BLACK:
@@ -28,9 +28,9 @@ if __name__ == "__main__":
     print("-" * 40)
     print(f"対戦結果 (10,000戦):")
     print(f"  黒 (RandomAI): {results['BLACK']} 勝")
-    print(f"  白 (YosumiAI): {results['WHITE']} 勝")
+    print(f"  白 (MonteCarloAI): {results['WHITE']} 勝")
     print(f"  引き分け     : {results['DRAW']}")
     print("-" * 40)
-    print(f"勝率 (YosumiAI): {(results['WHITE'] / num_games) * 100:.2f}%")
+    print(f"勝率 (MonteCarloAI): {(results['WHITE'] / num_games) * 100:.2f}%")
     print(f"総計算時間: {elapsed:.4f}s")
     print(f"1試合平均 : {elapsed / num_games:.6f}s")

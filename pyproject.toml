@@ -11,6 +11,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+dependencies = [
+    "maturin>=1.11.5",
+]
 
 [tool.maturin]
 # 拡張モジュールの名前（Cargo.tomlの [lib] name と一致させる）
