@@ -1,86 +1,126 @@
-from othello import Color, Othello
+from othello_bitboard import Color, BitboardOthello
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, List, Tuple
 import random
+import time
+
+# --- AI定義 (BitboardOthelloのメソッド名に合わせました) ---
+
 
 class AI(ABC):
-    def __init__(self, color: Color, game: Othello) -> None:
+    def __init__(self, color: Color, game: BitboardOthello) -> None:
         self.color = color
         self.game = game
-    
+
     @abstractmethod
-    def place(self) -> Optional[tuple]:
+    def place(self) -> Optional[Tuple[int, int]]:
         pass
 
+    def legal_moves(self) -> List[Tuple[int, int]]:
+        positions = []
+        # メソッド名を get_legal_moves_bits に変更
+        legal_bits = self.game.get_legal_moves_bits(self.color)
+        for i in range(64):
+            if (legal_bits >> i) & 1:
+                positions.append((i % 8, i // 8))
+        return positions
+
+
 class RandomAI(AI):
-    def place(self) -> Optional[tuple]:
-        positions = self.game.can_place_position(self.color)
-        if not positions:
-            return None
-        return random.choice(positions)
+    def place(self) -> Optional[Tuple[int, int]]:
+        positions = self.legal_moves()
+        return random.choice(positions) if positions else None
+
 
 class YosumiAI(AI):
-    def place(self) -> Optional[tuple]:
-        positions = self.game.can_place_position(self.color)
+    CORNERS = {(0, 0), (0, 7), (7, 0), (7, 7)}
+    DANGER_ZONES = {
+        (0, 1),
+        (1, 0),
+        (1, 1),
+        (6, 0),
+        (6, 1),
+        (7, 1),
+        (0, 6),
+        (1, 6),
+        (1, 7),
+        (6, 6),
+        (6, 7),
+        (7, 6),
+    }
+
+    def place(self) -> Optional[Tuple[int, int]]:
+        positions = self.legal_moves()
         if not positions:
             return None
 
-        # 1. 四隅（最強の場所）
-        corners = [(0, 0), (0, 7), (7, 0), (7, 7)]
-        for pos in corners:
-            if pos in positions:
-                return pos
+        current_corners = [p for p in positions if p in self.CORNERS]
+        if current_corners:
+            return random.choice(current_corners)
 
-        # 2. 危険地帯（角の隣）を定義
-        # ここに打つと相手に角を取られるリスクが高い
-        danger_zones = [
-            (0, 1), (1, 0), (1, 1),   # 左上角の周辺
-            (0, 6), (1, 7), (1, 6),   # 右上角の周辺
-            (6, 0), (7, 1), (6, 1),   # 左下角の周辺
-            (6, 7), (7, 6), (6, 6)    # 右下角の周辺
-        ]
-
-        # 3. 危険地帯「以外」の場所を抽出
-        safe_positions = [p for p in positions if p not in danger_zones]
-
+        safe_positions = [p for p in positions if p not in self.DANGER_ZONES]
         if safe_positions:
-            # 危険でない場所があれば、そこからランダムに選ぶ
             return random.choice(safe_positions)
+
+        return random.choice(positions)
+
+
+# --- Gameクラスの定義 ---
+
+
+class Game:
+    def __init__(self, black_ai_class, white_ai_class) -> None:
+        self.othello = BitboardOthello()
+        self.black_ai = black_ai_class(Color.BLACK, self.othello)
+        self.white_ai = white_ai_class(Color.WHITE, self.othello)
+
+    def play(self) -> Optional[Color]:
+        """終局まで進めて勝者を返す"""
+        pass_count = 0
+        turn_color = Color.BLACK
+
+        while pass_count < 2:
+            current_ai = self.black_ai if turn_color == Color.BLACK else self.white_ai
+            move = current_ai.place()
+            
+            if move:
+                x, y = move
+                self.othello.make_move(x, y, turn_color)
+                pass_count = 0
+            else:
+                pass_count += 1
+
+            # ターン交代
+            turn_color = Color.WHITE if turn_color == Color.BLACK else Color.BLACK
+
+        return self.winner()
+
+    def winner(self) -> Optional[Color]:
+        """石数を数えて勝者を判定する"""
+        black_count, white_count = self.othello.count_stones()
+
+        if black_count > white_count:
+            return Color.BLACK
+        elif white_count > black_count:
+            return Color.WHITE
         else:
-            # 危険な場所しか残っていない場合は、仕方なくそこから選ぶ
-            return random.choice(positions)
+            return None  # Draw
+
+
+# --- メイン処理 ---
 
 if __name__ == "__main__":
-    num_games = 1000
+    num_games = 10000
     results = {"BLACK": 0, "WHITE": 0, "DRAW": 0}
 
     print(f"{num_games}回の対戦を開始します...")
+    start_time = time.time()
 
-    for i in range(num_games):
-        game = Othello()
-        ai_black = RandomAI(Color.BLACK, game)
-        ai_white = YosumiAI(Color.WHITE, game)
-        
-        turn = 0
-        pass_counter = 0
-        
-        while pass_counter < 2:
-            current_ai = ai_black if turn % 2 == 0 else ai_white
-            attacker = current_ai.color
-            
-            position = current_ai.place()
-            
-            if position is None:
-                pass_counter += 1
-            else:
-                x, y = position
-                game.place_stone(x, y, attacker)
-                pass_counter = 0
-            
-            turn += 1
+    for _ in range(num_games):
+        # 毎回新しいゲームインスタンスを作成
+        game_manager = Game(RandomAI, YosumiAI)
+        winner = game_manager.play()
 
-        # 勝敗判定
-        winner = game.winner()
         if winner == Color.BLACK:
             results["BLACK"] += 1
         elif winner == Color.WHITE:
@@ -88,13 +128,11 @@ if __name__ == "__main__":
         else:
             results["DRAW"] += 1
 
-    # 結果表示
+    elapsed = time.time() - start_time
+
     print("-" * 30)
-    print(f"対戦結果 ({num_games}試合):")
-    print(f"黒 (RandomAI): {results['BLACK']} 勝")
-    print(f"白 (YosumiAI): {results['WHITE']} 勝")
-    print(f"引き分け: {results['DRAW']}")
-    print("-" * 30)
-    
-    win_rate = (results['WHITE'] / num_games) * 100
-    print(f"YosumiAI (白) の勝率: {win_rate}%")
+    print(
+        f"対戦結果: 黒(Random) {results['BLACK']}勝 / 白(Yosumi) {results['WHITE']}勝 / 引分 {results['DRAW']}"
+    )
+    print(f"勝率 (YosumiAI): {(results['WHITE'] / num_games) * 100:.2f}%")
+    print(f"総時間: {elapsed:.2f}s (1試合平均: {elapsed / num_games:.4f}s)")
